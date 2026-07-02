@@ -79,8 +79,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
-    // 格式支持: FLAC, WAV, AAC, MP3, OGG, APE 等
-    implementation("androidx.media3:media3-exoplayer-flac:$media3Version")
+    // 格式支持: FLAC/WAV/AAC/MP3/OGG/APE 等 (FLAC 已内置在 ExoPlayer 中)
 
     // Room 数据库
     implementation("androidx.room:room-runtime:$roomVersion")
