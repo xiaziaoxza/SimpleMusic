@@ -15,7 +15,6 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
-import androidx.media3.exoplayer.trackselection.TrackSelectionParameters
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,38 +31,27 @@ class AudioEngine(context: Context) {
     val exoPlayer: ExoPlayer
 
     init {
-        // 高音质音频接收器配置
-        val audioSink = DefaultAudioSink.Builder(context)
-            .setAudioProcessorChain(DefaultAudioSink.DefaultAudioProcessorChain())
-            .setEnableFloatOutput(true)           // 启用浮点输出，减少精度损失
-            .setAudioOffloadMode(DefaultAudioSink.OFFLOAD_MODE_ENABLED_GAPLESS_REQUIRED) // 启用硬件卸载
-            .build()
-
-        // 渲染器工厂 - 优化音频
-        val renderersFactory = DefaultRenderersFactory(context)
-            .setEnableAudioOffload(true)
-            .setEnableAudioTrackPlaybackParams(true)
-
-        // 轨道选择器 - 不降采样，保持原始音质
-        val trackSelector = DefaultTrackSelector(context).apply {
-            parameters = TrackSelectionParameters.Builder(context)
-                .setForceHighestSupportedBitrate(true)  // 强制最高比特率
-                .setMaxAudioBitrate(Int.MAX_VALUE)       // 不限制音频比特率
-                .build()
+        // 渲染器工厂
+        val renderersFactory = DefaultRenderersFactory(context).apply {
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         }
+
+        // 轨道选择器
+        val trackSelector = DefaultTrackSelector(context)
 
         // 加载控制 - 更大缓冲以应对无损格式
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                32_000,     // 最小缓冲 32s (默认15s)
-                64_000,     // 最大缓冲 64s (默认50s)
+                32_000,     // 最小缓冲 32s
+                64_000,     // 最大缓冲 64s
                 1_500,      // 播放前缓冲 1.5s
                 3_000       // 重新缓冲后播放 3s
             )
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        exoPlayer = ExoPlayer.Builder(context, renderersFactory)
+        exoPlayer = ExoPlayer.Builder(context)
+            .setRenderersFactory(renderersFactory)
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .setAudioAttributes(
@@ -76,7 +64,7 @@ class AudioEngine(context: Context) {
             .setHandleAudioBecomingNoisy(true)
             .build()
 
-        // 设置播放器监听
+        // 播放器监听
         exoPlayer.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 val isPlaying = state == Player.STATE_READY && exoPlayer.playWhenReady
@@ -157,9 +145,6 @@ class AudioEngine(context: Context) {
     val currentMediaItemIndex: Int get() = exoPlayer.currentMediaItemIndex
     val mediaItemCount: Int get() = exoPlayer.mediaItemCount
 
-    /**
-     * 获取当前音频的详细播放参数
-     */
     @OptIn(UnstableApi::class)
     fun getAudioInfo(): AudioInfo {
         val audioFormat = exoPlayer.audioFormat ?: return AudioInfo()
@@ -167,7 +152,7 @@ class AudioEngine(context: Context) {
             sampleRate = audioFormat.sampleRate,
             channelCount = audioFormat.channelCount,
             encoding = audioFormat.encoding,
-            bitrate = exoPlayer.audioFormat?.bitrate ?: 0
+            bitrate = audioFormat.bitrate
         )
     }
 

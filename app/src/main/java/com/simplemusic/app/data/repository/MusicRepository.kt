@@ -195,9 +195,8 @@ class MusicRepository(private val context: Context) {
             val title = displayName.substringBeforeLast(".")
             val (sampleRate, bitRate, channels, bitDepth) = inferAudioParams(mimeType, sizeBytes, 0)
 
-            // 复制到应用内部存储
-            val storedUri = copyToAppStorage(uri)
-            val finalUri = storedUri ?: uri.toString()
+            // 直接使用 SAF URI（应用已有持久化读取权限）
+            val finalUri = uri.toString()
 
             SongEntity(
                 title = title,
