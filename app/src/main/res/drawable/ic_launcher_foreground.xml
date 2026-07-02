@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 音乐符号 -->
+    <path
+        android:fillColor="#1DB954"
+        android:pathData="M54,28 C40.7,28 30,38.7 30,52 C30,65.3 40.7,76 54,76 C67.3,76 78,65.3 78,52 C78,38.7 67.3,28 54,28 ZM54,71 C43.5,71 35,62.5 35,52 C35,41.5 43.5,33 54,33 C64.5,33 73,41.5 73,52 C73,62.5 64.5,71 54,71 Z"/>
+    <path
+        android:fillColor="#1DB954"
+        android:pathData="M54,36 C45.2,36 38,43.2 38,52 C38,60.8 45.2,68 54,68 C62.8,68 70,60.8 70,52 C70,43.2 62.8,36 54,36 ZM60,55 L51,58 L51,47 L51,46 L60,43 L60,55 Z"/>
+</vector>
