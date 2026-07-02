@@ -182,7 +182,7 @@ fun ImportScreen(
                             lineHeight = MaterialTheme.typography.bodySmall.lineHeight
                         )
                     }
-                )
+                }
             }
         }
     }
