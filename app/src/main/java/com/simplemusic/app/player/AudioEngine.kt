@@ -151,7 +151,7 @@ class AudioEngine(context: Context) {
         return AudioInfo(
             sampleRate = audioFormat.sampleRate,
             channelCount = audioFormat.channelCount,
-            encoding = audioFormat.encoding,
+            encoding = audioFormat.pcmEncoding,
             bitrate = audioFormat.bitrate
         )
     }
