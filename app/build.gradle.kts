@@ -6,14 +6,14 @@ plugins {
 
 android {
     namespace = "com.simplemusic.app"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.simplemusic.app"
-        minSdk = 24
-        targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        minSdk = 29
+        targetSdk = 35
+        versionCode = 2
+        versionName = "2.0.0"
     }
 
     buildTypes {
@@ -50,7 +50,7 @@ android {
 }
 
 // 版本统一管理
-val media3Version = "1.2.1"
+val media3Version = "1.10.0"
 val roomVersion = "2.6.1"
 val composeBomVersion = "2024.02.00"
 
@@ -75,11 +75,11 @@ dependencies {
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
-    // Media3 - 高质量音频播放
+    // Media3 - 满血最新版，支持 USB DAC Bit-Perfect
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
-    // 格式支持: FLAC/WAV/AAC/MP3/OGG/APE 等 (FLAC 已内置在 ExoPlayer 中)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.8.1")
 
     // Room 数据库
     implementation("androidx.room:room-runtime:$roomVersion")
@@ -91,6 +91,16 @@ dependencies {
 
     // Core
     implementation("androidx.core:core-ktx:1.12.0")
+
+    // jaudiotagger - 真实音频元数据解析（绕过 Android MediaMetadataRetriever）
+    implementation("net.jthink:jaudiotagger:3.0.1")
+
+    // HTTP - 在线歌词/封面获取
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.code.gson:gson:2.11.0")
+
+    // Palette - 专辑封面颜色提取
+    implementation("androidx.palette:palette-ktx:1.0.0")
 
     // 调试工具
     debugImplementation("androidx.compose.ui:ui-tooling")

@@ -5,12 +5,12 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.simplemusic.app.SimpleMusicApp
 import com.simplemusic.app.data.db.SongEntity
 import com.simplemusic.app.data.repository.MusicRepository
 import com.simplemusic.app.player.AudioEngine
 import com.simplemusic.app.player.AudioInfo
-import com.simplemusic.app.player.PlaybackService
+import com.simplemusic.app.player.EqualizerInfo
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -21,72 +21,87 @@ data class MainUiState(
     val currentAlbum: String = "",
     val currentSongId: Long = -1,
     val isPlaying: Boolean = false,
+    val isLoading: Boolean = false,
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val audioInfo: AudioInfo = AudioInfo(),
+    val isBitPerfect: Boolean = false,
+    val equalizerInfo: EqualizerInfo? = null,
     val songCount: Int = 0,
     val isScanning: Boolean = false,
-    val scanProgress: String = ""
+    val scanProgress: String = "",
+    // 可视化数据
+    val amplitude: Float = 0f,
+    val fftBands: FloatArray = FloatArray(128)
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = MusicRepository(application)
-    val audioEngine = AudioEngine(application)
-
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
     private var currentPlaylist: List<SongEntity> = emptyList()
     private var currentIndex: Int = -1
+    private val engine: AudioEngine get() = AudioEngine.instance!!
 
     init {
-        // 监听数据库中的歌曲
+        // 监听歌曲库
         viewModelScope.launch {
             repository.getAllSongs().collect { songs ->
                 _uiState.update { it.copy(songs = songs, songCount = songs.size) }
             }
         }
 
-        // 监听播放器状态更新
+        // 轮询播放状态 + 可视化数据
         viewModelScope.launch {
             while (true) {
-                kotlinx.coroutines.delay(250)
-                val player = audioEngine.exoPlayer
-                if (player.playWhenReady && player.playbackState == androidx.media3.common.Player.STATE_READY) {
+                delay(100)
+                try {
+                    val e = AudioEngine.instance ?: continue
                     _uiState.update {
                         it.copy(
-                            positionMs = player.currentPosition,
-                            durationMs = if (player.duration > 0) player.duration else 0,
-                            isPlaying = player.playWhenReady,
-                            audioInfo = audioEngine.getAudioInfo()
+                            positionMs = e.currentPosition,
+                            durationMs = e.duration,
+                            isPlaying = e.isPlaying,
+                            audioInfo = e.getAudioInfo(),
+                            isBitPerfect = e.isBitPerfect.value,
+                            amplitude = AudioEngine.visualizerAmplitude,
+                            fftBands = AudioEngine.visualizerFftBands.copyOf()
                         )
                     }
-                }
+                } catch (_: Exception) {}
+            }
+        }
+
+        // 监听 Bit-Perfect 状态
+        viewModelScope.launch {
+            AudioEngine.instance?.isBitPerfect?.collect {
+                _uiState.update { s -> s.copy(isBitPerfect = it) }
             }
         }
 
         // 初始扫描
-        viewModelScope.launch {
-            scanMediaStore()
-        }
+        viewModelScope.launch { scanMediaStore() }
     }
 
-    // ===== 播放控制 =====
+    // ─── 播放控制 ───
 
     fun playSong(song: SongEntity) {
-        // 把当前歌曲列表作为播放队列
         val songs = _uiState.value.songs
         currentPlaylist = songs
         currentIndex = songs.indexOfFirst { it.id == song.id }
 
-        audioEngine.setMediaItem(
+        engine.playMedia(
             uri = song.uri,
             title = song.title,
             artist = song.artist,
-            album = song.album
+            album = song.album,
+            startIndex = currentIndex.coerceAtLeast(0),
+            items = songs.takeIf { it.size > 1 }?.map {
+                Pair(it.uri, Triple(it.title, it.artist, it.album))
+            } ?: emptyList()
         )
-        audioEngine.play()
 
         _uiState.update {
             it.copy(
@@ -100,123 +115,90 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun togglePlayPause() {
-        audioEngine.togglePlayPause()
-        _uiState.update { it.copy(isPlaying = audioEngine.isPlaying) }
+        engine.togglePlayPause()
     }
 
-    fun seekTo(positionMs: Long) {
-        audioEngine.seekTo(positionMs)
+    fun seekTo(pos: Long) {
+        engine.seekTo(pos)
     }
 
     fun skipToNext() {
-        if (currentPlaylist.isEmpty() || currentIndex < 0) return
-        val nextIndex = (currentIndex + 1) % currentPlaylist.size
-        val nextSong = currentPlaylist[nextIndex]
-        currentIndex = nextIndex
-        playSong(nextSong)
+        engine.skipNext()
     }
 
     fun skipToPrevious() {
-        if (currentPlaylist.isEmpty() || currentIndex < 0) return
-        if (audioEngine.currentPositionMs > 3000) {
-            // 播了超过3秒，回到开头
-            audioEngine.seekTo(0)
-        } else {
-            val prevIndex = if (currentIndex > 0) currentIndex - 1 else currentPlaylist.size - 1
-            val prevSong = currentPlaylist[prevIndex]
-            currentIndex = prevIndex
-            playSong(prevSong)
-        }
+        if (engine.currentPosition > 3000) engine.seekTo(0)
+        else engine.skipPrevious()
     }
 
-    // ===== 歌曲管理 =====
+    // ─── USB DAC ───
+
+    fun enableBitPerfect(sampleRate: Int = 0, bitDepth: Int = 0) {
+        engine.enableBitPerfect(sampleRate, bitDepth)
+    }
+
+    fun disableBitPerfect() {
+        engine.disableBitPerfect()
+    }
+
+    // ─── EQ ───
+
+    fun applyEqualizer(enabled: Boolean, bandLevels: ShortArray) {
+        engine.applyEqualizer(enabled, bandLevels)
+    }
+
+    fun applyBassBoost(enabled: Boolean, strength: Short) {
+        engine.applyBassBoost(enabled, strength)
+    }
+
+    fun applyLoudness(enabled: Boolean, gainMb: Int) {
+        engine.applyLoudness(enabled, gainMb)
+    }
+
+    // ─── 歌曲管理 ───
 
     fun deleteSong(id: Long) {
-        viewModelScope.launch {
-            repository.deleteSong(id)
-        }
+        viewModelScope.launch { repository.deleteSong(id) }
     }
-
-    // ===== 扫描与导入 =====
 
     fun scanMediaStore() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isScanning = true, scanProgress = "正在扫描系统媒体库...") }
-
+            _uiState.update { it.copy(isScanning = true, scanProgress = "扫描中...") }
             try {
                 val count = repository.scanLocalAudio()
-                _uiState.update {
-                    it.copy(
-                        isScanning = false,
-                        scanProgress = "扫描完成，找到 $count 首歌曲"
-                    )
-                }
+                _uiState.update { it.copy(isScanning = false, scanProgress = "找到 $count 首") }
             } catch (e: Exception) {
-                Log.e("MainViewModel", "Scan failed", e)
-                _uiState.update {
-                    it.copy(
-                        isScanning = false,
-                        scanProgress = "扫描失败: ${e.message}"
-                    )
-                }
+                _uiState.update { it.copy(isScanning = false, scanProgress = "失败: ${e.message}") }
             }
         }
     }
 
     fun importFromDirectory(dirUri: Uri) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isScanning = true, scanProgress = "正在扫描目录...") }
-
+            _uiState.update { it.copy(isScanning = true, scanProgress = "导入中...") }
             try {
                 val count = repository.importSongsFromDirectory(dirUri)
-                _uiState.update {
-                    it.copy(
-                        isScanning = false,
-                        scanProgress = "导入完成: $count 首歌曲"
-                    )
-                }
+                _uiState.update { it.copy(isScanning = false, scanProgress = "导入 $count 首") }
             } catch (e: Exception) {
-                Log.e("MainViewModel", "Import dir failed", e)
-                _uiState.update {
-                    it.copy(
-                        isScanning = false,
-                        scanProgress = "导入失败: ${e.message}"
-                    )
-                }
+                _uiState.update { it.copy(isScanning = false, scanProgress = "失败: ${e.message}") }
             }
         }
     }
 
     fun importFiles(uris: List<Uri>) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isScanning = true, scanProgress = "正在导入 ${uris.size} 个文件...") }
-
-            var imported = 0
-            for (uri in uris) {
-                try {
-                    val storedUri = repository.copyToAppStorage(uri)
-                    if (storedUri != null) imported++
-                } catch (e: Exception) {
-                    Log.e("MainViewModel", "Import file failed: $uri", e)
-                }
+            _uiState.update { it.copy(isScanning = true, scanProgress = "导入 ${uris.size} 个...") }
+            var ok = 0
+            for (u in uris) {
+                try { if (repository.copyToAppStorage(u) != null) ok++ } catch (_: Exception) {}
             }
-
-            // 重新扫描以更新数据库
             repository.scanLocalAudio()
-
-            _uiState.update {
-                it.copy(
-                    isScanning = false,
-                    scanProgress = "导入完成: $imported/${uris.size} 个文件"
-                )
-            }
+            _uiState.update { it.copy(isScanning = false, scanProgress = "完成: $ok/${uris.size}") }
         }
     }
 
-    // ===== 生命周期 =====
-
     override fun onCleared() {
         super.onCleared()
-        audioEngine.release()
+        // 不要在这里 release engine，service 生命周期管理
     }
 }

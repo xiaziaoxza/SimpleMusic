@@ -15,6 +15,9 @@ interface SongDao {
     @Query("SELECT * FROM songs WHERE uri = :uri LIMIT 1")
     suspend fun getSongByUri(uri: String): SongEntity?
 
+    @Query("SELECT * FROM songs ORDER BY title COLLATE NOCASE ASC")
+    suspend fun getAllSongsList(): List<SongEntity>
+
     @Query("""
         SELECT * FROM songs
         WHERE title LIKE '%' || :query || '%'
