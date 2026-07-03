@@ -50,7 +50,7 @@ android {
 }
 
 // 版本统一管理
-val media3Version = "1.10.0"
+val media3Version = "1.5.1"
 val roomVersion = "2.6.1"
 val composeBomVersion = "2024.02.00"
 
