@@ -42,7 +42,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Generate Gradle Wrapper
-        run: gradle wrapper --gradle-version 8.4
+        run: gradle wrapper --gradle-version 8.11.1
 
       - name: Build Debug APK
         if: ${{ github.event.inputs.build_type == 'debug' || github.event_name != 'workflow_dispatch' }}
