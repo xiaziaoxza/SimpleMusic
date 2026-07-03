@@ -379,57 +379,6 @@ class MusicRepository(private val context: Context) {
     suspend fun clearQueue() = playlistDao.clearQueue()
     suspend fun getQueueSize(): Int = playlistDao.getQueueSize()
 
-    // ========== jaudiotagger 真实元数据解析 ==========
-
-    /**
-     * 使用 jaudiotagger 直接读取音频文件头部，获取真实的位深、采样率等参数
-     * 这是绕过 Android MediaMetadataRetriever 限制的关键方法
-     */
-    fun resolveTrueMetadata(filePath: String): AudioFileMetadata? {
-        return try {
-            val file = java.io.File(filePath)
-            if (!file.exists()) return null
-
-            // 关闭 jaudiotagger 日志
-            java.util.logging.Logger.getLogger("org.jaudiotagger").level = java.util.logging.Level.OFF
-
-            val audioFile = org.jaudiotagger.audio.AudioFileIO.read(file)
-            val header = audioFile.audioHeader
-            val tag = audioFile.tag
-
-            AudioFileMetadata(
-                sampleRate = header.sampleRateAsNumber,
-                bitDepth = header.bitsPerSize,
-                channels = if (header.channels == "Stereo") 2 else 1,
-                durationMs = (header.trackLength * 1000).toLong(),
-                bitRate = header.bitRateAsNumber.toInt(),
-                encoding = header.encodingType,
-                isLossless = header.isLossless,
-                format = header.format,
-                artist = tag?.getFirst(org.jaudiotagger.tag.FieldKey.ARTIST),
-                album = tag?.getFirst(org.jaudiotagger.tag.FieldKey.ALBUM),
-                title = tag?.getFirst(org.jaudiotagger.tag.FieldKey.TITLE)
-            )
-        } catch (e: Exception) {
-            Log.w("MusicRepository", "jaudiotagger parse failed: ${filePath} - ${e.message}")
-            null
-        }
-    }
-
-    data class AudioFileMetadata(
-        val sampleRate: Int = 44100,
-        val bitDepth: Int = 16,
-        val channels: Int = 2,
-        val durationMs: Long = 0,
-        val bitRate: Int = 0,
-        val encoding: String = "",
-        val isLossless: Boolean = false,
-        val format: String = "",
-        val artist: String? = null,
-        val album: String? = null,
-        val title: String? = null
-    )
-
     companion object {
         private val AUDIO_EXTENSIONS = setOf(
             "mp3", "flac", "wav", "aac", "ogg", "opus",

@@ -22,11 +22,9 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.simplemusic.app.MainActivity
 import com.simplemusic.app.data.db.AppDatabase
-import com.simplemusic.app.data.db.SongEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.launch
 
 @OptIn(UnstableApi::class)
@@ -38,9 +36,8 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
-        engine = AudioEngine(this)
+        engine = AudioEngine.instance!!
 
-        // 通知栏点击跳转
         val intent = Intent(this, MainActivity::class.java).apply {
             action = "OPEN_PLAYER"
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -55,7 +52,6 @@ class PlaybackService : MediaLibraryService() {
             .setBitmapLoader(LocalBitmapLoader())
             .build()
 
-        // 精简通知栏按钮（去掉快进快退）
         val provider = object : DefaultMediaNotificationProvider(this) {
             override fun getMediaButtons(
                 session: MediaSession,
@@ -79,14 +75,11 @@ class PlaybackService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = mediaSession
 
     override fun onDestroy() {
-        engine.release()
         mediaSession?.player?.release()
         mediaSession?.release()
         mediaSession = null
         super.onDestroy()
     }
-
-    // ─── 浏览树 ───
 
     private inner class SessionCallback : MediaLibrarySession.Callback {
 
@@ -100,9 +93,8 @@ class PlaybackService : MediaLibraryService() {
                     MediaItem.Builder()
                         .setMediaId("root")
                         .setMediaMetadata(MediaMetadata.Builder()
-                            .setTitle("简音 · 音乐库")
-                            .setIsPlayable(false)
-                            .setIsBrowsable(true)
+                            .setTitle("简音")
+                            .setIsPlayable(false).setIsBrowsable(true)
                             .build())
                         .build(),
                     params
@@ -117,34 +109,32 @@ class PlaybackService : MediaLibraryService() {
             page: Int, pageSize: Int,
             params: LibraryParams?
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-            return serviceScope.future {
+            val future = com.google.common.util.concurrent.SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
+            serviceScope.launch {
                 try {
                     val dao = AppDatabase.getInstance(this@PlaybackService).songDao()
                     val songs = dao.getAllSongsList()
                     val items = songs.map { s ->
                         MediaItem.Builder()
-                            .setMediaId(s.uri)
-                            .setUri(s.uri)
+                            .setMediaId(s.uri).setUri(s.uri)
                             .setMediaMetadata(MediaMetadata.Builder()
-                                .setTitle(s.title)
-                                .setArtist(s.artist)
-                                .setAlbumTitle(s.album)
-                                .setIsPlayable(true)
+                                .setTitle(s.title).setArtist(s.artist)
+                                .setAlbumTitle(s.album).setIsPlayable(true)
                                 .build())
                             .build()
                     }
-                    LibraryResult.ofItemList(ImmutableList.copyOf(items), params)
+                    future.set(LibraryResult.ofItemList(ImmutableList.copyOf(items), params))
                 } catch (e: Exception) {
-                    LibraryResult.ofError(androidx.media3.session.SessionError.ERROR_BAD_VALUE)
+                    future.set(LibraryResult.ofError(androidx.media3.session.SessionError.ERROR_BAD_VALUE))
                 }
             }
+            return future
         }
     }
 
     @UnstableApi
     private inner class LocalBitmapLoader : BitmapLoader {
         override fun supportsMimeType(mimeType: String) = true
-
         override fun decodeBitmap(data: ByteArray): ListenableFuture<Bitmap> =
             Futures.immediateFuture(BitmapFactory.decodeByteArray(data, 0, data.size))
 
@@ -163,17 +153,12 @@ class PlaybackService : MediaLibraryService() {
                 try {
                     bmp = when {
                         uri.scheme == "content" -> {
-                            contentResolver.openInputStream(uri)?.use {
-                                BitmapFactory.decodeStream(it)
-                            }
+                            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
                         }
                         else -> BitmapFactory.decodeFile(uri.path)
                     }
                 } catch (_: Exception) {}
-                if (bmp == null) {
-                    bmp = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-                }
-                future.set(bmp)
+                future.set(bmp ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888))
             }
             return future
         }
